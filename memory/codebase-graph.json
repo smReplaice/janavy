@@ -1,0 +1,354 @@
+{
+  "$schema": "janavi-knowledge-graph/codebase-graph/v1",
+  "description": "JANAVI (Papermark fork) architecture knowledge graph — nodes and edges. Read before modifying a module; update after. Companion files: api-relationships.json, database-relationships.json, module-dependencies.json, security-boundaries.json; diagrams in docs/architecture/*.mmd.",
+  "generated": "2026-10-20 (agreements + native electronic signature features added)",
+  "nodes": [
+    {
+      "id": "router:app",
+      "kind": "subsystem",
+      "label": "App Router (auth pages + modern APIs)",
+      "files": [
+        "app/(auth)/**",
+        "app/api/**"
+      ],
+      "notes": "login/register/email-OTP; views gates; cron"
+    },
+    {
+      "id": "router:pages",
+      "kind": "subsystem",
+      "label": "Pages Router (dashboard + public viewer)",
+      "files": [
+        "pages/**"
+      ],
+      "notes": "everything user-facing except auth"
+    },
+    {
+      "id": "edge:middleware",
+      "kind": "subsystem",
+      "label": "Edge middleware",
+      "files": [
+        "middleware.ts",
+        "lib/middleware/*"
+      ]
+    },
+    {
+      "id": "auth:nextauth",
+      "kind": "subsystem",
+      "label": "Authentication",
+      "files": [
+        "lib/auth/*",
+        "pages/api/auth/*"
+      ]
+    },
+    {
+      "id": "auth:viewer-sessions",
+      "kind": "subsystem",
+      "label": "Viewer sessions + gates",
+      "files": [
+        "lib/auth/{link-session,dataroom-auth,preview-auth}.ts",
+        "app/api/views*",
+        "lib/api/auth/token.ts"
+      ]
+    },
+    {
+      "id": "rbac",
+      "kind": "subsystem",
+      "label": "Team RBAC",
+      "files": [
+        "lib/api/rbac/*",
+        "lib/api/auth/with-session-team.ts"
+      ]
+    },
+    {
+      "id": "doc:upload",
+      "kind": "subsystem",
+      "label": "Upload (tus + presigned)",
+      "files": [
+        "pages/api/file/**",
+        "lib/files/*",
+        "components/upload-zone.tsx"
+      ]
+    },
+    {
+      "id": "doc:processing",
+      "kind": "subsystem",
+      "label": "Conversion pipeline",
+      "files": [
+        "lib/api/documents/process-document.ts",
+        "lib/trigger/*",
+        "pages/api/mupdf/*"
+      ]
+    },
+    {
+      "id": "doc:domain",
+      "kind": "subsystem",
+      "label": "Documents domain",
+      "files": [
+        "pages/api/teams/[teamId]/documents/**",
+        "lib/documents/*",
+        "pages/documents/**"
+      ]
+    },
+    {
+      "id": "link:domain",
+      "kind": "subsystem",
+      "label": "Links + presets",
+      "files": [
+        "pages/api/links/** (owner)",
+        "lib/links/*",
+        "components/links/**"
+      ]
+    },
+    {
+      "id": "viewer:public",
+      "kind": "subsystem",
+      "label": "Public viewer",
+      "files": [
+        "pages/view/**",
+        "components/view/**",
+        "lib/api/links/link-data.ts",
+        "lib/hooks/use-lazy-pages.ts"
+      ]
+    },
+    {
+      "id": "download",
+      "kind": "subsystem",
+      "label": "Downloads (original bytes)",
+      "files": [
+        "pages/api/links/download/**",
+        "lib/trigger/bulk-download.ts",
+        "lib/files/get-file.ts"
+      ]
+    },
+    {
+      "id": "dataroom",
+      "kind": "subsystem",
+      "label": "Datarooms",
+      "files": [
+        "pages/datarooms/**",
+        "pages/api/teams/[teamId]/datarooms/**",
+        "lib/dataroom/*",
+        "components/datarooms/**",
+        "components/view/dataroom/**"
+      ]
+    },
+    {
+      "id": "branding:janavi",
+      "kind": "subsystem",
+      "label": "Branding (JANAVI, independent)",
+      "files": [
+        "lib/branding/*",
+        "components/branding/*",
+        "pages/branding.tsx",
+        "prisma/schema/brand.prisma"
+      ]
+    },
+    {
+      "id": "email",
+      "kind": "subsystem",
+      "label": "Transactional email",
+      "files": [
+        "lib/resend.ts",
+        "lib/emails/*",
+        "components/emails/**",
+        "lib/janavi or lib/emails/beacon (Beacon adapter)"
+      ]
+    },
+    {
+      "id": "notifications",
+      "kind": "subsystem",
+      "label": "Notification preferences + dispatch",
+      "files": [
+        "lib/notifications/*",
+        "lib/api/notification-helper.ts",
+        "pages/api/jobs/*",
+        "prisma/schema/notification.prisma"
+      ]
+    },
+    {
+      "id": "analytics",
+      "kind": "subsystem",
+      "label": "Tracking + Tinybird",
+      "files": [
+        "lib/tracking/*",
+        "lib/tinybird/*",
+        "pages/api/record_*.ts",
+        "lib/video-analytics/*"
+      ]
+    },
+    {
+      "id": "redis",
+      "kind": "subsystem",
+      "label": "Redis (sessions, locks, job stores, rate limits)",
+      "files": [
+        "lib/redis.ts",
+        "lib/janavi/redis.ts",
+        "lib/redis-*.ts",
+        "lib/redis/*",
+        "lib/files/tus-redis-locker.ts"
+      ]
+    },
+    {
+      "id": "db",
+      "kind": "subsystem",
+      "label": "PostgreSQL (Prisma)",
+      "files": [
+        "lib/prisma.ts",
+        "lib/janavi/db-env.ts",
+        "prisma/schema/*",
+        "prisma/migrations/**"
+      ]
+    },
+    {
+      "id": "storage",
+      "kind": "subsystem",
+      "label": "S3/CloudFront storage",
+      "files": [
+        "lib/files/*",
+        "ee/features/storage/* (config used by AGPL)",
+        "next.config.mjs (image hosts)"
+      ]
+    },
+    {
+      "id": "jobs",
+      "kind": "subsystem",
+      "label": "Background jobs",
+      "files": [
+        "trigger.config.ts",
+        "lib/trigger/*",
+        "lib/cron/*",
+        "app/api/cron/*"
+      ]
+    },
+    {
+      "id": "i18n",
+      "kind": "subsystem",
+      "label": "Viewer i18n",
+      "files": [
+        "lib/i18n/*",
+        "locales/*"
+      ]
+    },
+    {
+      "id": "janavi",
+      "kind": "subsystem",
+      "label": "JANAVI-owned modules",
+      "files": [
+        "lib/janavi/{plan,limits,team-state,db-env,redis,notifications/denied-access}.ts",
+        "lib/branding/* + components/branding/*",
+        "lib/files/{storage-config,tus-s3-store}.ts",
+        "lib/request-lists/*",
+        "components/conversations/viewer/*",
+        "components/view/confidential/*",
+        "lib/trigger/convert-files.ts",
+        "config/features.ts"
+      ],
+      "notes": "independent replacements; ee/ + app/(ee)/ DELETED 2026-10-16"
+    },
+    {
+      "id": "feature:signatures",
+      "kind": "feature",
+      "label": "Native electronic signature (single-signer MVP)",
+      "files": [
+        "lib/signing/signature-fields.ts (client-safe zod config + labels)",
+        "lib/signing/native.ts (server pdf-lib signing pipeline)",
+        "lib/signing/native-certificate.ts (audit certificate PDF)",
+        "app/api/views/sign/route.ts (public session-bound sign endpoint)",
+        "pages/api/teams/[teamId]/documents/[id]/signatures/** (owner list/certificate/download)",
+        "components/links/link-sheet/signature-section.tsx + signature-field-placer.tsx (owner config + field placement)",
+        "components/view/signature/** (signer layer: flow, field boxes, capture modal)",
+        "components/emails/signature-completed.tsx + signature-confirmation.tsx, lib/emails/send-signature-emails.ts",
+        "prisma/schema/signature.prisma (SignatureRecord + SignatureAuditEvent)"
+      ],
+      "notes": "Recipient signs INSIDE the protected page-image viewer; PDF modified server-side only (pdf-lib, rotation-aware normalized→PDF coords); original + signed PDFs stay in private S3 (signed-${version}-${linkId}.pdf). Link columns requireSignature/signatureFieldConfiguration/signatureVerificationRequired/signatureConsentRequired (migration 20261020000000_add_native_signing); saving requireSignature forces emailProtected+emailAuthenticated. Idempotent per (link, signer email); PENDING>5min retryable. Electronic signature ≠ certificate digital signature (stated in UI + certificate). Flag: config/features.ts electronicSignatures. Tests: tests/e2e/16-signatures.spec.ts."
+    },
+    {
+      "id": "feature:agreements",
+      "kind": "feature",
+      "label": "Agreements (document categorization)",
+      "files": [
+        "lib/documents/agreement.ts",
+        "lib/api/documents/agreement-status.ts",
+        "components/welcome/select.tsx (Agreement option)",
+        "components/documents/filters/agreement-type-button.tsx",
+        "prisma/schema/document.prisma (agreementType/agreementStatus/agreementMeta)"
+      ],
+      "notes": "Agreement = ordinary Document + category metadata (NDA/MSA/SOW/SLA/PARTNERSHIP/VENDOR/EMPLOYMENT/OTHER). agreementStatus is a SHARING lifecycle (DRAFT|SHARED|VIEWED|EXPIRED|REVOKED), never a signature status; no e-signature. Migration 20261019192700_add_agreement_metadata (additive: 3 Document columns + Document_teamId_agreementType_idx)."
+    },
+    {
+      "id": "onboarding:welcome",
+      "kind": "subsystem",
+      "label": "Welcome onboarding flow",
+      "files": [
+        "pages/welcome.tsx",
+        "components/welcome/**",
+        "components/settings/survey-settings.tsx",
+        "components/shared/dealflow-popup.tsx",
+        "pages/api/teams/[teamId]/survey/**"
+      ],
+      "notes": "Query-param step machine (?type=select|agreement|document|notion|dataroom*). Agreement path: /welcome?type=agreement&agreementType=<TYPE> → UploadContainer passes agreementType into the same document-create API. Survey question: 'How will you use Janavy?'."
+    }
+  ],
+  "edges": [
+    "edge:middleware → auth:nextauth (JWT getToken) + router:pages (custom-domain rewrites to pages/view/domains/*)",
+    "router:app(auth) → auth:nextauth; email (verification links, OTP)",
+    "viewer:public → auth:viewer-sessions (POST /api/views) → db (Viewer, View, VerificationToken) + redis (link/dataroom sessions)",
+    "viewer:public → doc:processing (page images from DocumentPage) + analytics (client trackers)",
+    "download → auth:viewer-sessions + rbac-less group checks + doc:domain (originalFile) + storage (presign) + doc:processing (watermark flatten)",
+    "doc:upload → storage + redis (tus locker) → doc:domain (create Document/Version) → doc:processing (trigger dispatch)",
+    "doc:processing → storage (page uploads) → db (DocumentPage rows)",
+    "link:domain → db (Link w/ encrypted password, watermarkConfig) + branding:janavi (per-link brand) + email (invitations via notifications)",
+    "dataroom → doc:domain (DataroomDocument) + link:domain (DATAROOM_LINK) + rbac (UserDataroom scoping) + email/notifications (digests, uploads)",
+    "branding:janavi → db (Brand, DataroomBrand) + viewer:public (brand resolution in link-data, nav/logo) + redis (brand-logo-cache) + email (OTP template logo)",
+    "email ← notifications ← analytics (view events) + dataroom (change/upload) + auth:nextauth (magic links)",
+    "analytics → Tinybird (page_views, click/video events) ← viewer:public trackers; dashboards: doc:domain/dataroom read pipes",
+    "jobs → doc:processing tasks + email + redis (job stores, digest queues); cron → QStash-verified endpoints",
+    "db ← every domain subsystem via lib/prisma.ts",
+    "feature:agreements → doc:domain (Document.agreementType/Status/Meta via process-document + documents POST/GET/PATCH; ?agreementType= filter; search matches name OR agreementType)",
+    "feature:agreements → link:domain (pages/api/links/index.ts layers Confidential defaults onto linkData for agreement documents when the request omits the toggles: emailProtected+emailAuthenticated true, allowDownload false, tiled '{{email}} · {{date}} · CONFIDENTIAL' watermark)",
+    "feature:agreements → auth:viewer-sessions (app/api/views: view → VIEWED, expiry → EXPIRED via lib/api/documents/agreement-status.ts, waitUntil fire-and-forget; links/[id]/archive: REVOKED; links/download: EXPIRED)",
+    "onboarding:welcome → feature:agreements (Agreement option replaces Pitchdeck; agreement-type sub-step; choice rides ?agreementType= into upload-container → createDocument)",
+    "feature:agreements → viewer:public (recipient email gate + OTP + watermark defaults apply to agreement links; downloads blocked server-side in /api/links/download)",
+    "feature:signatures → link:domain (4 additive Link columns via pages/api/links POST + PUT with zod validation; requireSignature forces emailProtected+emailAuthenticated)",
+    "feature:signatures → auth:viewer-sessions (POST /api/views/sign verifies the Redis link session + verified flag; /api/views returns the per-recipient signature config with signed flag)",
+    "feature:signatures → viewer:public (signature layer over the page images in pages-horizontal/vertical viewers; consent + Sign & Complete; signed confirmation)",
+    "feature:signatures → storage (signed PDF written via putFileServer; original only read) + email (owner notification + signer confirmation via Beacon) + db (SignatureRecord/SignatureAuditEvent)",
+    "feature:signatures → dataroom? NO — document links only (field placement uses the owner preview-pages API)"
+  ],
+  "known_defects_2026_10": [
+    "44 ee modules imported by ~60 AGPL files are absent from this checkout (never in git history) — build broken until JANAVI replacements land (branding 22 in lib/branding + components/branding; remaining: confidential-view, request-lists, redaction, conversations trio, convert-files, dataroom-analytics, partners, billing trial email, stripe/currency, ee/limits pair)",
+    "dangling internal route: lib/api/notification-helper.ts calls POST /api/jobs/send-dataroom-view-invitation — no such route exists",
+    "pages/api/v1 does not exist although next.config.mjs rewrites /v1/* → /api/v1/* (public REST API surface absent in this fork)",
+    "PendingDocumentUpload model defined but unreferenced"
+  ],
+  "resolved_2026_10_16": [
+    "all 44 missing ee modules replaced/removed (branding→lib/branding+components/branding; conversions→lib/trigger/convert-files (flag OFF); confidential-view→components/view/confidential; request-lists lib→lib/request-lists (UI P2); redaction mounts removed (P2); conversations provider+questions API minimal (flag OFF); partners/trial/billing removed; dataroom-analytics reimplemented)",
+    "5 non-ee never-committed modules implemented: lib/api/errors, lib/api/auth/restricted-tokens, lib/oauth/scopes, lib/dataroom/apply-default-permissions, DataroomIndexSource type",
+    "billing/plan/limits/paused-state eliminated (lib/janavi/plan|limits|team-state), stripe+saml-jackson+dub deps uninstalled",
+    "dangling /api/jobs/send-dataroom-view-invitation call path removed with invitations feature",
+    "hanko + slack clients now lazy (build without env); register path public for self-hosted signup; next.config has-rules made env-conditional"
+  ],
+  "open_items": [
+    "edge middleware cannot reach Redis Cloud (ioredis is Node-only): custom-domain root redirect override always uses fallback URL (lib/middleware/domain.ts note)",
+    "JANAVI_FEATURES.documentConversions=false until soffice conversion is e2e-tested; conversations/requestLists/redaction/protectedViewer flags false pending P1/P2",
+    "no .env in checkout yet — DB/Redis/Beacon live flows untested",
+    "2026-10-19 QA: datarooms/team specs order-sensitive under hot dev server (pass in isolation); DOCX/PPTX/TXT rejected until documentConversions enabled; Tinybird degrade-by-design without token — see docs/testing/JANAVY-QA-REPORT.md",
+    "2026-10-20: branding regression suite tests/e2e/janavy-branding.spec.ts (8 tests) — run with the suite; DOM-level scan"
+  ],
+  "branding": {
+    "name": "JANAVY (prose: Janavy)",
+    "website": "https://janavy.com",
+    "legal": {
+      "terms": "https://janavy.com/terms",
+      "privacy": "https://janavy.com/privacy"
+    },
+    "palette": {
+      "primary": "#0A1234",
+      "secondary": "#123DFF",
+      "accent": "#FFD236"
+    },
+    "assets": "public/images/branding/ (official janavy.com wordmark/symbol/favicon)",
+    "internal_module_names_note": "lib/janavi/*, JANAVI_* env vars and JANAVI_BRAND kept for backward compatibility; values are the public brand",
+    "config": "config/branding.ts (BRANDING constants) + lib/branding/janavy.ts (JANAVI_BRAND runtime)"
+  }
+}

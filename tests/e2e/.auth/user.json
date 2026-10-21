@@ -1,0 +1,49 @@
+{
+  "cookies": [
+    {
+      "name": "next-auth.csrf-token",
+      "value": "d32372d807fdf3515e9f91dda25bab16085d448356e41ffef577f2399f72d054%7Cb6ed1b802c2d35c08fc7dd29793ae271f15f56edb518198a1353fde62a2b1148",
+      "domain": "localhost",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "next-auth.callback-url",
+      "value": "http%3A%2F%2Flocalhost%3A3000%2Flogin",
+      "domain": "localhost",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "next-auth.session-token",
+      "value": "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..TsPitTWwsiEiHsvG.FYpIolDHSqrIkHT6ls-GyHlwCP92ary0ulKmLN2NoYJ_wX3-l8WWrFgxI3ann0QfOhRq3Lpz8QZq0T5K8Md4dAsawUnocmRcDNK3jZDjCDQAbviE1hRMWgsxtP5-ddJ64rlPjeIih_PfhIF-7BnwHFWgHGOV1hks6-aqAog3Yr4c1oSXLC792IbIHeMR6lRdWxtPNW2Z_w6ICdjjwZA2ibEeYw4M2eWkIg-XOGzI08VGZ_caEgkGabe-ak5b92LxoIS0H4F5V0h13Ar0rPkj5yPtZpSkwEQgAZAu6k4t_yF8pK5gjxGyYJkiNLvwrdl4L-W7z1qezBzcMKLRYp7bIx1o1-6NVA7jij35r_FLuxYCMD3YOCQBzYT5GyZBB_ooFMTL_szvwo53U7LTqB4dI3qKJhNEg17qszIprsMzz8vOGD0mTqkbAK4ZOBjPtNBIKYys76CM6uCFZz5wMrMll4VFhLzNivntY5hl0DP8IVqUjkR5_WVKD7VioY5VBplPFjF95IrExXjeGE-vhbL7LYOL46G_FoqCECeF1zqJeW9TxQJD5j4bqYa4gVyLLQMq3RERzqlnkIVMaB8DP1LQ4DFSZiyLjHqoEA8WD1yvFmEZMWoVr4TURUNQBoa3NvacZk_UuSaK5pdzWy9LjS43vgN71FR8mheDvU0pKeUMC7LQb1lNYzHPcmoDodhKVpQ_nt6lI9XFmMUkO6MWB7JzLC4DQiOH-6I1yz8DVXm7nwbv9xFUAwY4kyRCHlJa7o73CQyacIjnukjy0e4P.hC_bFT2AQwGgtEtdc0jnAw",
+      "domain": "localhost",
+      "path": "/",
+      "expires": 1795090927,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "http://localhost:3000",
+      "localStorage": [
+        {
+          "name": "nextauth.message",
+          "value": "{\"event\":\"session\",\"data\":{\"trigger\":\"getSession\"},\"timestamp\":1792498922}"
+        },
+        {
+          "name": "last_papermark_login",
+          "value": "credentials"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "$schema": "janavi-knowledge-graph/security-boundaries/v1",
+  "description": "JANAVI (Papermark fork) security boundaries: trust zones, enforcement points, internal auth, rate limits, and known gaps vs JANAVI DRM requirements. Update after touching auth, viewer APIs, or download endpoints.",
+  "generated": "2026-10-16 (standalone sweep)",
+  "trust_zones": {
+    "public_internet": [
+      "GET /view/:linkId (ISR page props, no secrets \u2014 password sanitized to 'protected')",
+      "POST /api/views, /api/views-dataroom (access gate)",
+      "POST /api/views/pages (lazy page re-signing)",
+      "POST /api/links/download/** (original bytes)",
+      "POST /api/record_* (zod-validated ingestion)",
+      "GET /api/feature-flags, /api/health, unsubscribe/notification-preferences with HMAC tokens"
+    ],
+    "authenticated_users": [
+      "NextAuth JWT sessions (cookie __Secure-next-auth.session-token)",
+      "dashboard pages + /api/teams/:teamId/** (membership + RBAC)",
+      "tus upload /api/file/tus"
+    ],
+    "internal_services": [
+      "Bearer INTERNAL_API_KEY: /api/mupdf/*, /api/jobs/*, /api/file/s3/get-presigned-get-url",
+      "QStash signatures: /api/cron/*, /api/webhooks/callback",
+      "x-documenso-secret: /api/webhooks/signing",
+      "REVALIDATE_TOKEN: /api/revalidate"
+    ],
+    "viewer_sessions": [
+      "Redis-backed httpOnly cookies: pm_ls_<linkId> (document, 23h), pm_drs_<linkId> (dataroom, 23h), pm_sas_* (agreement, 90d HMAC)",
+      "browser-fingerprint bound (sha256 UA+Accept-Language+Sec-CH-UA)",
+      "per-session 100 req/min; maxAccesses 1000; viewer-scoped revocation set viewer_sessions:<viewerId>"
+    ]
+  },
+  "enforcement_points": {
+    "password": "app/api/views/route.ts:331-364 + views-dataroom:381-411 \u2014 legacy bcrypt or AES-256-CTR (salt:hash; key=sha256(NEXT_PRIVATE_DOCUMENT_PASSWORD_KEY)); encrypt-on-write lib/utils.ts:599-659; owner APIs return decrypted to team members only",
+    "email_gate": "emailProtected default true \u2014 validated before View creation",
+    "email_otp": "emailAuthenticated \u2014 6-digit OTP VerificationToken (otp:<linkId>:<email>, 10min, single-use) then 23h sha256(token+NEXTAUTH_SECRET) token; downloads require session.verified",
+    "recipient_restrictions": "checkViewerEmailAccess (lib/utils/global-block-list.ts): link allowList/denyList + visitor groups \u2192 team globalBlockList; enforced in both view routes; denied attempts \u2192 ee access-notifications [EE]",
+    "expiration": "link.expiresAt checked at view + download + viewer page",
+    "view_limits": "GAP: no per-link max-view-count in this fork (only session-internal caps)",
+    "download": "allowDownload (+downloadOnly bypass) + ViewerGroup/PermissionGroup canDownload(+canDownloadOriginal); every download endpoint re-verifies session + view age (30min doc / 23h dataroom)",
+    "watermark": "viewing = client SVG overlay (components/view/watermark-svg.tsx) fed by watermarkConfig from /api/views; downloads = server-side burned into PDF content stream (lib/utils/watermark-pdf.ts via /api/mupdf/annotate-document, INTERNAL_API_KEY) \u2014 NOT applied to sheet/html/notion",
+    "screenshot_deterrence": "client-only hotkey interception + print:block overlay (components/view/ScreenProtection.tsx) \u2014 best-effort, cannot prevent OS capture",
+    "print": "GAP: no native print-disable toggle (only the ScreenProtection print CSS)",
+    "copy": "text selection disabled by default; enabled only via textSelection feature flag; no clipboard interception",
+    "page_authorization": "page-image URLs signed in \u00b110-page window at view creation; remaining lazy-signed per \u226415 pages via /api/views/pages (session + view age <23h + 60/min rate limit)",
+    "original_exposure": "KNOWN RISK: /api/views returns a signed full-file URL for pdf/image/video when hasPages=false (unbound to viewer, short-lived); JANAVI Protected Viewer must eliminate this path for restricted modes"
+  },
+  "rbac": {
+    "roles": "ADMIN | MANAGER | MEMBER | DATAROOM_MEMBER (enum Role, team.prisma)",
+    "matrix": "lib/api/rbac/permissions.ts (verbs datarooms.read, documents.write, links.write, members.write, sso.write...; unknown role \u2192 deny-all)",
+    "wrappers": "withTeam/withTeamApi (lib/api/auth/with-session-team.ts): session \u2192 membership ACTIVE+unblocked \u2192 role \u2192 permission \u2192 default-deny DATAROOM_MEMBER \u2192 plan \u2192 room entitlement (UserDataroom)",
+    "legacy_guards": "lib/api/rbac/guard.ts enforce{Dataroom,Link,Document}MemberScope; lib/team/helper.ts getDocumentWithTeamAndUser",
+    "sso_enforcement": "SSO-required email domains reject non-SAML signin (lib/api/teams/is-saml-enforced-for-email-domain.ts) [SAML itself EE]"
+  },
+  "crypto_secrets": {
+    "NEXTAUTH_SECRET": "JWT signing + token hashing (link-verification, agreements HMAC)",
+    "NEXT_PRIVATE_DOCUMENT_PASSWORD_KEY": "link password encryption",
+    "NEXT_PRIVATE_VERIFICATION_SECRET": "verification URL checksums",
+    "INTERNAL_API_KEY": "service-to-service bearer",
+    "env_policy": "never hardcode; JANAVI adds DB_*, REDIS_*, BEACON_API_TOKEN (see .env.janavi.example)"
+  },
+  "rate_limits_upstash": {
+    "factory": "lib/redis.ts ratelimit(n, window) \u2014 @upstash/ratelimit sliding window, prefix 'papermark'",
+    "sites": [
+      "OTP send/verify both view routes (1/30s email + 10/min IP)",
+      "verify-code login (5/min email, 10/min IP)",
+      "views/pages 60/min",
+      "download OTP",
+      "account email-change 6/6h",
+      "folder/bulk dataroom ops",
+      "jobs/get-thumbnail",
+      "agreements signing",
+      "legacy public API per-token",
+      "per-link-session 100/min",
+      "signin IP (ee/features/security) [EE]"
+    ],
+    "note": "lib/redis.ts dual-transport: Redis Cloud (ioredis Lua sliding window, keys janavi:dev:ratelimit-*) or Upstash REST or fail-open stub when unconfigured; edge middleware never rate-limits via Redis"
+  },
+  "tenancy": {
+    "storage": "S3 keys teamId/docId/... \u2014 presign proxy verifies session user's team matches key's team",
+    "db": "every query team-scoped via teamId; dataroom room-scoping via UserDataroom + access-control rows",
+    "cross_tenant_risks_to_test": "link resolution by id (enumeration), views/pages cross-view access, download cross-view, presign proxy key parsing, custom-domain slug collisions"
+  },
+  "ee_licensed_note": "ee/ + app/(ee)/ deleted 2026-10-16; zero imports remain. Auth, RBAC, tenant isolation, link access policies, rate limits and INTERNAL_API_KEY service auth all preserved through the billing/enterprise removal.",
+  "edge_middleware": "Edge cannot reach Redis Cloud (ioredis Node-only) \u2192 lib/middleware/domain.ts no longer reads the per-domain redirect override from Redis; always uses JANAVI fallback URL. Auth gate + /view rewrites unaffected. /register now public (self-hosted signup)."
+}

@@ -1,0 +1,140 @@
+{
+  "$schema": "janavi-knowledge-graph/module-dependencies/v1",
+  "description": "JANAVI (Papermark fork) module dependency map \u2014 key subsystems, their files, and inter-module dependencies. Update after significant refactors.",
+  "generated": "2026-10-16 (standalone sweep)",
+  "routers": {
+    "app_router": [
+      "app/(auth)/* login/register/email-OTP/invitation",
+      "app/api/* views, views-dataroom, views/pages, cron/*, feature-flags, webhooks/{callback,signing}",
+      "app/(ee)/api/* [COMMERCIAL] saml, scim, ai, workflows, freeze, faqs"
+    ],
+    "pages_router": [
+      "pages/view/[linkId]/* public viewer (ISR) + custom domains variant",
+      "pages/dashboard,documents/**,datarooms/**,settings/**,visitors,workflows [EE],branding",
+      "pages/api/** owner-side APIs, auth/[...nextauth], file/tus*, links/download/**, mupdf/*, jobs/*, record_*"
+    ]
+  },
+  "subsystems": {
+    "viewer_chain": {
+      "entry": "pages/view/[linkId]/index.tsx \u2192 fetchLinkDataById (lib/api/links/link-data.ts) \u2192 DocumentView (components/view/document-view.tsx) \u2192 AccessForm \u2192 POST /api/views \u2192 ViewData (components/view/view-data.tsx)",
+      "renderers": [
+        "viewer/pages-horizontal-viewer.tsx (flipbook default)",
+        "viewer/pages-vertical-viewer.tsx",
+        "viewer/{image,excel,advanced-excel,html,video,notion,download-only,pdf-default}-viewer.tsx",
+        "viewer/dataroom-viewer.tsx (dataroom docs)"
+      ],
+      "chrome": [
+        "components/view/nav.tsx (+dataroom/nav-dataroom.tsx)",
+        "components/view/watermark-svg.tsx",
+        "components/view/ScreenProtection.tsx",
+        "components/view/powered-by.tsx",
+        "components/view/viewer-i18n-provider.tsx"
+      ],
+      "lazy_pages": "lib/hooks/use-lazy-pages.ts \u2192 /api/views/pages"
+    },
+    "access_control": {
+      "sessions": [
+        "lib/auth/link-session.ts (pm_ls_*, Redis, fingerprint, 100/min)",
+        "lib/auth/dataroom-auth.ts (pm_drs_*)",
+        "lib/auth/preview-auth.ts (owner 20min)"
+      ],
+      "gates": [
+        "app/api/views/route.ts",
+        "app/api/views-dataroom/route.ts"
+      ],
+      "lists": "lib/utils/global-block-list.ts",
+      "tokens": "lib/api/auth/token.ts (sha256 hash), lib/signing/{access-token,download-token,agreements}.ts (HMAC)"
+    },
+    "storage": {
+      "transport": "lib/files/transport.ts (S3 vs VERCEL_BLOB)",
+      "write": [
+        "pages/api/file/tus/[[...file]].ts (+tus-viewer) w/ lib/files/tus-redis-locker.ts + ee MultiRegionS3Store [EE dep \u2014 storage config also drives AGPL paths]",
+        "lib/files/{put-file,put-file-server,put-file-server-stream,copy-file-server,delete-file-server}.ts",
+        "pages/api/file/s3/{get-presigned-post-url,multipart}.ts"
+      ],
+      "read": [
+        "lib/files/get-file.ts \u2192 pages/api/file/s3/get-presigned-get-url.ts (INTERNAL; CloudFront/S3 signing) \u2192 get-presigned-get-url-proxy.ts (session+team-of-key check)",
+        "lib/files/sign-page-links.ts",
+        "lib/files/bulk-download-presign.ts"
+      ],
+      "config": "lib/files/storage-config.ts + lib/files/tus-s3-store.ts (JANAVI-owned, replaced ee/features/storage); same NEXT_PRIVATE_UPLOAD_* env"
+    },
+    "processing": {
+      "dispatch": "lib/api/documents/process-document.ts \u2192 trigger tasks",
+      "tasks_agpl": [
+        "lib/trigger/pdf-to-image-route.ts \u2192 pages/api/mupdf/{get-pages,convert-page}.ts (INTERNAL)",
+        "lib/trigger/{optimize-video-files,convert-pdf-direct,bulk-download,export-visits,cleanup-expired-exports,*-notification}.ts"
+      ],
+      "tasks_missing_ee": "ee/features/conversions/lib/trigger/convert-files.ts \u2014 MISSING; docs/slides/key conversion dispatch dangles (JANAVI must implement independent converter)",
+      "queues": "lib/trigger/queues.ts"
+    },
+    "documents_domain": {
+      "api": "pages/api/teams/[teamId]/documents/** (+versions, links, views, stats, export-visits)",
+      "lib": [
+        "lib/documents/* (create-document client wrappers, move-dataroom-*)",
+        "lib/team/helper.ts (ownership + password decrypt)",
+        "lib/utils/get-file-size-limits.ts"
+      ]
+    },
+    "links_domain": {
+      "api_owner": "pages/api/links/** + pages/api/teams/[teamId]/links/** + presets",
+      "api_public": "pages/api/links/download/** (index, dataroom-document, dataroom-folder, bulk+jobs+parts, verify)",
+      "lib": [
+        "lib/links/*",
+        "lib/api/links/link-data.ts"
+      ]
+    },
+    "dataroom_domain": {
+      "api": "pages/api/teams/[teamId]/datarooms/** (folders, documents, groups, permission-groups, views, branding, download)",
+      "lib": [
+        "lib/dataroom/{apply-permissions,permissions-sql,permissions-tree,build-folder-hierarchy,index-generator,root-item-access}.ts"
+      ],
+      "ui": "pages/datarooms/[id]/** + components/datarooms/**",
+      "ee_deps_missing": [
+        "analytics page (pure re-export shim)",
+        "request-lists components",
+        "conversations sidebar provider",
+        "trial scheduled-email"
+      ]
+    },
+    "email": {
+      "transport": "lib/resend.ts central sendEmail dispatches via Beacon (lib/emails/beacon.ts) when BEACON_API_TOKEN set; Resend fallback; from-addresses env-driven JANAVI_EMAIL_*",
+      "senders": "lib/emails/send-*.ts (29 wrappers) \u2192 components/emails/*.tsx (react-email)",
+      "notifications": "lib/notifications/{dispatch,resolve-recipients}.ts + lib/api/notification-helper.ts + NotificationPreference model",
+      "jobs": "pages/api/jobs/* (INTERNAL_API_KEY) + trigger notification tasks + QStash cron digests (lib/redis/dataroom-notification-queue.ts)"
+    },
+    "redis": {
+      "client": "lib/redis.ts dual-transport facade: Redis Cloud ioredis (lib/janavi/redis.ts, keyPrefix janavi:dev:, Lua sliding-window ratelimit) | Upstash REST | stub; edge runtime gets stub (ioredis Node-only)",
+      "stores": [
+        "lib/redis-job-store.ts (export jobs: export_job:*, user_jobs:*, team_jobs:*, cleanup zset)",
+        "lib/redis-download-job-store.ts (download_job:*, viewer_download_jobs:*)",
+        "lib/redis/brand-logo-cache.ts (brand:logo:*/brand:hide-logo:*)",
+        "lib/redis/dataroom-notification-queue.ts",
+        "lib/files/tus-redis-locker.ts (lockerRedisClient)"
+      ]
+    },
+    "analytics": {
+      "ingest": "lib/tracking/{record-link-view,safe-page-view-tracker,tracking-config,video-tracking}.ts + lib/utils/reliable-tracking.ts \u2192 pages/api/record_*.ts",
+      "warehouse": "lib/tinybird/{publish,pipes}.ts (datasources page_views__v3, click/video/webhook events)",
+      "aggregate": "pages/api/teams/[teamId]/{documents/[id]/views,datarooms/[id]/views,analytics} + components/visitors|datarooms stats"
+    },
+    "auth": {
+      "config": "lib/auth/auth-options.ts (Google, LinkedIn, Email magic-link + Redis login code, Hanko passkeys, SAML [EE]) \u2192 pages/api/auth/[...nextauth].ts",
+      "edge": "middleware.ts \u2192 lib/middleware/{app,domain,posthog}.ts",
+      "rbac": "lib/api/rbac/* + lib/api/auth/with-session-team.ts"
+    },
+    "branding_janavi": {
+      "note": "IMPLEMENTED: lib/branding/* (14 modules incl. janavi.ts constants) + components/branding/* (8) \u2014 independent JANAVI replacements, all 29 importers repointed"
+    }
+  },
+  "external_services": {
+    "postgres": "Prisma \u2192 POSTGRES_PRISMA_URL(_NON_POOLING/_SHADOW); JANAVI: RDS janavi_dev via DB_* (lib/janavi/db-env.ts)",
+    "redis": "Upstash REST (existing) | Redis Cloud REDIS_URL (JANAVI, lib/janavi/redis.ts, prefix janavi:dev:)",
+    "s3_cloudfront": "NEXT_PRIVATE_UPLOAD_* env; dual region EU/US; archive bucket",
+    "email": "Resend (existing) | Beacon https://beacon.replaice.co/api/v1/threads X-BEACON-TOKEN (JANAVI)",
+    "tinybird": "TINYBIRD_TOKEN \u2014 analytics warehouse",
+    "trigger.dev": "trigger.config.ts proj_plmsfqvqunboixacjjus; dev via trigger:v4:dev",
+    "qstash": "QSTASH_TOKEN + signing keys \u2014 cron + webhooks",
+    "removed": "Stripe (dep uninstalled), SAML/SCIM (jackson), Dub tracking, Cal embed \u2014 2026-10-16"
+  }
+}

@@ -1,0 +1,22 @@
+import { chromium } from "@playwright/test";
+const browser = await chromium.launch();
+const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+const errors = [];
+page.on("console", m => { if (m.type() === "error") errors.push(m.text().slice(0, 160)); });
+page.on("pageerror", e => errors.push("PAGEERROR: " + String(e).slice(0, 160)));
+await page.goto("http://localhost:3000/login", { waitUntil: "networkidle", timeout: 90000 });
+await page.locator("#email").waitFor({ state: "visible", timeout: 30000 });
+const btn = page.getByRole("button", { name: "Continue with Email" });
+console.log("email visible, button disabled:", await btn.isDisabled());
+await page.waitForTimeout(1500); // let hydration settle
+await page.locator("#email").fill("probe-nav@replaice.co");
+console.log("after fill, disabled:", await btn.isDisabled());
+const signinRes = page.waitForResponse(r => r.url().includes("/api/auth/signin/email"), { timeout: 20000 }).catch(() => null);
+await btn.click();
+const sr = await signinRes;
+if (sr) console.log("signin POST:", sr.status(), (await sr.text().catch(() => "")).slice(0, 200));
+await page.waitForTimeout(4000);
+console.log("url now:", page.url());
+console.log("button text:", (await page.getByRole("button", { name: /Continue with Email|Error/i }).first().textContent().catch(() => "?"))?.trim());
+console.log("errors:", JSON.stringify(errors.slice(0, 5), null, 1));
+await browser.close();

@@ -1,0 +1,54 @@
+%% JANAVI database model (Prisma, PostgreSQL). Core relations only —
+%% full field inventory in memory/database-relationships.json.
+
+erDiagram
+    Team ||--o{ UserTeam : "members"
+    User ||--o{ UserTeam : ""
+    User ||--o{ Account : "next-auth"
+    User ||--o{ Document : "owns"
+    Team ||--o{ Document : ""
+    Team ||--o{ Link : ""
+    Team ||--o{ Dataroom : ""
+    Team ||--o{ Brand : "white-label"
+    Team ||--o{ ViewerGroup : ""
+    Team ||--o{ Viewer : "known recipients"
+    Team ||--o{ Invitation : ""
+    Team ||--o{ LinkPreset : "defaults"
+    Team ||--o{ NotificationPreference : ""
+
+    Document ||--o{ DocumentVersion : "versions (isPrimary)"
+    DocumentVersion ||--o{ DocumentPage : "page images + links overlay"
+    Document }o--|| Folder : "optional (materialized path)"
+    Document ||--o{ Link : "DOCUMENT_LINK"
+    Document }o--o{ Dataroom : "DataroomDocument (folderId, orderIndex, hierarchicalIndex)"
+
+    Dataroom ||--o{ DataroomFolder : "materialized path tree"
+    Dataroom ||--o| DataroomBrand : "per-room brand override"
+    Dataroom ||--o{ UserDataroom : "DATAROOM_MEMBER scoping"
+    Dataroom ||--o{ TaskList : "request lists"
+    TaskList ||--o{ Task : "TODO|UPLOAD|ACKNOWLEDGE"
+
+    Link ||--o{ View : ""
+    Link }o--o| Brand : "brandId"
+    Link }o--o| ViewerGroup : "group links"
+    Link }o--o| PermissionGroup : "granular perms"
+    Viewer ||--o{ View : ""
+    ViewerGroup ||--o{ ViewerGroupMembership : ""
+    ViewerGroup ||--o{ ViewerGroupAccessControls : "canView/canDownload per item"
+    PermissionGroup ||--o{ PermissionGroupAccessControls : "+canDownloadOriginal"
+
+    View ||--o{ Reaction : ""
+    View ||--o| CustomFieldResponse : ""
+    View }o--o| AgreementResponse : ""
+    Link ||--o{ CustomField : ""
+
+    Link ||--o{ SignatureRecord : "native e-signature (requireSignature)"
+    SignatureRecord ||--o{ SignatureAuditEvent : "append-only audit"
+    Document ||--o{ SignatureRecord : ""
+    DocumentVersion ||--o{ SignatureRecord : "primary version signed"
+    View |o--o{ SignatureRecord : "session-bound"
+
+    VerificationToken : "OTP codes + 23h link-verification"
+    SentEmail : "audit of sends"
+    RestrictedToken : "API keys (scopes)"
+    Webhook : "outgoing webhooks"

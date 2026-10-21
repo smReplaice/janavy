@@ -1,0 +1,71 @@
+{
+  "$schema": "janavi-knowledge-graph/database-relationships/v1",
+  "description": "JANAVI (Papermark fork) Prisma data model — models, relations, enums. 15 schema files in prisma/schema/, 134 migrations. Datasource: postgresql via POSTGRES_PRISMA_URL (+NON_POOLING directUrl, SHADOW for migrations). Maintained per sprint; update after schema changes.",
+  "generated": "2026-10-20 (agreements + native electronic signature)",
+  "tenant_model": {
+    "root": "Team (team.prisma) — every user-facing entity hangs off teamId",
+    "membership": "UserTeam (userId+teamId, Role enum ADMIN|MANAGER|MEMBER|DATAROOM_MEMBER, status, blockedAt)",
+    "room_scoping": "UserDataroom (userId+dataroomId) scopes DATAROOM_MEMBER to specific rooms"
+  },
+  "models": {
+    "document_pipeline": {
+      "Document": "document.prisma — name, file (primary/converted key), originalFile (source pptx/docx/...), type, contentType, storageType (enum S3_PATH|VERCEL_BLOB), numPages, ownerId->User(SetNull), teamId->Team(Cascade), folderId->Folder, downloadOnly, hiddenInAllDocuments, assistantEnabled, advancedExcelEnabled; relations: links, versions, datarooms(DataroomDocument), annotations, redactionJobs, uploadedDocument(DocumentUpload), tags Added 2026-10-20 (agreements): agreementType String? (NDA|MSA|SOW|SLA|PARTNERSHIP|VENDOR|EMPLOYMENT|OTHER), agreementStatus String? default DRAFT (SHARING lifecycle DRAFT|SHARED|VIEWED|EXPIRED|REVOKED — never signature statuses), agreementMeta Json?; @@index([teamId, agreementType]) — migration 20261019192700_add_agreement_metadata (additive only).",
+      "DocumentVersion": "versionNumber @@unique([versionNumber,documentId]), file, originalFile, fileSize BigInt, storageType, numPages, isPrimary, isVertical, fileId/vectorStoreFileId (OpenAI), hasPages, length (video seconds), pages DocumentPage[]",
+      "DocumentPage": "versionId->DocumentVersion, pageNumber @@unique([pageNumber,versionId]), file (page-image key), storageType, pageLinks Json (href/coords overlays), embeddedLinks String[], metadata Json (width/height/scaleFactor)",
+      "Folder": "team-scoped materialized path @@unique([teamId,path]), self-relation parent/child",
+      "DocumentUpload": "visitor uploads via link (document/view/link/dataroom refs, originalFilename, mimeType)"
+    },
+    "sharing": {
+      "Link": "link.prisma — linkType enum DOCUMENT_LINK|DATAROOM_LINK|WORKFLOW_LINK; url @unique, slug @@unique([domainSlug,slug]); expiresAt; password (bcrypt or salt:hash AES-256-CTR); allowList/denyList String[]; emailProtected default true; emailAuthenticated; allowDownload; enableWatermark+watermarkConfig Json; enableScreenshotProtection; enableConfidentialView; enableAgreement; enableNotification/Feedback/Question/Conversation/AIAgents; enableCustomMetatag+meta*; audienceType enum GENERAL|GROUP|TEAM + groupId->ViewerGroup; permissionGroupId->PermissionGroup; upload settings (enableUpload, isFileRequestOnly, uploadFolderIds, enableIndexFile); brandId->Brand; ownerId->User('LinkOwner'); customFields CustomField[] Added 2026-10-20 (native e-signature, migration 20261020000000_add_native_signing): requireSignature Boolean default false, signatureFieldConfiguration Json? ({methods:[DRAW|TYPE|UPLOAD], fields:[{fieldId,type,pageNumber,x,y,width,height,required}]} normalized 0-1, y from top), signatureVerificationRequired Boolean default true (forced true while requireSignature), signatureConsentRequired Boolean default true; signatureRecords SignatureRecord[]",
+      "LinkPreset": "per-team default link settings incl. watermark + agreement + custom fields",
+      "CustomField": "enum CustomFieldType SHORT_TEXT..MULTI_SELECT; CustomFieldResponse unique per view",
+      "VisitorGroup": "team-level email/domain allow lists; LinkVisitorGroup join; ViewerGroupMembership (dataroom side)"
+    },
+    "views_and_viewers": {
+      "View": "schema.prisma — linkId(Cascade), documentId?, dataroomId?, dataroomViewId? (per-doc view inside dataroom session), viewerEmail/viewerName, verified, viewedAt @default(now()), downloadedAt, downloadType enum SINGLE|BULK|FOLDER, downloadMetadata Json, viewType enum DOCUMENT_VIEW|DATAROOM_VIEW, viewerId->Viewer, groupId->ViewerGroup; indexed [documentId,viewedAt desc]",
+      "Viewer": "known recipient @@unique([teamId,email]), verified, invitedAt, notificationPreferences Json",
+      "Reaction": "viewId, pageNumber, type",
+      "VerificationToken": "identifier + token @unique + expires — reused for OTP codes (otp:{linkId}:{email}, 10min) and 23h link-verification tokens"
+    },
+    "dataroom": {
+      "Dataroom": "dataroom.prisma — pId @unique (dr_*), internalName, DataroomBrand, defaultPermissionStrategy enum INHERIT_FROM_PARENT|ASK_EVERY_TIME|HIDDEN_BY_DEFAULT, defaultRootItemAccess enum VIEW_ONLY|VIEW_AND_DOWNLOAD|HIDDEN, allowBulkDownload, showLastUpdated, introduction (TipTap Json), freeze fields (isFrozen/frozenAt/frozenArchiveUrl/hash), requestListEnabled, conversations/Q&A/FAQ toggles, agentsEnabled",
+      "DataroomDocument": "join dataroom<->document + folderId, orderIndex, hierarchicalIndex ('1.2.3') @@unique([dataroomId,documentId])",
+      "DataroomFolder": "materialized path @@unique([dataroomId,path]), self-relation",
+      "ViewerGroup + ViewerGroupMembership + ViewerGroupAccessControls": "canView/canDownload per itemId (enum ItemType DATAROOM_DOCUMENT|DATAROOM_FOLDER)",
+      "PermissionGroup + PermissionGroupAccessControls": "canView/canDownload/canDownloadOriginal",
+      "TaskList/Task/TaskAssignment/TaskActivity": "request-list system; Task type TODO|UPLOAD|ACKNOWLEDGE, status OPEN..COMPLETED (string, Zod-validated)"
+    },
+    "auth_and_team": {
+      "User": "schema.prisma — plan/stripe lifecycle, referral; Account/Session (next-auth)",
+      "Invitation": "team invite, token @unique, Role, dataroomIds String[] for DATAROOM_MEMBER scoping",
+      "Domain": "custom domains (slug, verified, isDefault)",
+      "Team": "plan, stripe lifecycle, limits Json (datarooms/users/domains/fileSizeLimits), ssoEnabled/ssoEmailDomain/ssoEnforcedAt, ignoredDomains/globalBlockList String[]"
+    },
+    "branding": "Brand (brand.prisma) — per-team @@unique([teamId,name]): logo, hideLogo, banner, brandColor, accentColor, accentButtonColor, welcomeMessage, ctaLabel/Url, cardLayout enum LIST|COMPACT|GRID, viewerLayoutPreset enum STANDARD|STRICT|MODERN|NOTION, OG overrides, defaultLanguage; referenced by Link.brand, Dataroom (DataroomBrand override + DataroomBaseBrand), TeamDefaultBrand",
+    "qaa": "Conversation (visibility enum PRIVATE|PUBLIC_LINK|PUBLIC_GROUP|PUBLIC_DOCUMENT|PUBLIC_DATAROOM), DataroomQuestion + DataroomQuestionAssignment (buy-side Q&A), ConversationParticipant, Message (isInternalNote), DataroomFaqItem",
+    "ai": "Chat/ChatMessage (vectorStoreId) — ee-licensed surface",
+    "annotations": "DocumentAnnotation (Tiptap Json, pages Int[]) + AnnotationImage",
+    "redactions": "DocumentRedactionJob (Gemini coords, trigger ids) + DocumentRedaction (PII categories) — ee-licensed surface",
+    "integrations": "Integration + InstalledIntegration (credentials Json @@unique([teamId,integrationId])); Webhook; IncomingWebhook; RestrictedToken (API keys, scopes, rateLimit); oauth.prisma OAuthClient/Approval/GrantTeam/Record (node-oidc-provider); jackson.prisma SAML/SCIM tables",
+    "notifications": "NotificationPreference — types DOCUMENT_VIEW|DATAROOM_VIEW|BLOCKED_ACCESS|DATAROOM_UPLOAD|CONVERSATION_MESSAGE, frequency IMMEDIATE|NEVER, scope ALL|MINE_ONLY; SentEmail (+EmailType enum)",
+    "misc": "Feedback/FeedbackResponse, Agreement/AgreementResponse (signedFileKey), YearInReview, Tag/TagItem, ViewerInvitation (enum SENT|FAILED|BOUNCED), Workflow/WorkflowStep/WorkflowExecution (ee), ReferralInvite",
+    "signatures": {
+      "SignatureRecord": "signature.prisma — one signing attempt per (link, viewerEmail): linkId->Link(Cascade), documentId->Document(Cascade), documentVersionId->DocumentVersion(Cascade) (primary version at signing time), viewId->View(SetNull), viewerEmail (lowercase), viewerId?, method enum SignatureMethod DRAW|TYPE|UPLOAD, status enum SignatureStatus PENDING|COMPLETED|FAILED, consentAcceptedAt?, signedAt?, signedFileKey? (private S3 key teamId/docId/signed-vN-linkId.pdf), signedFileHash?/originalFileHash? (SHA-256 hex), ipAddress?, userAgent?, fieldValues Json (text values only; images live only in the signed PDF); @@index([linkId, viewerEmail, status]) — idempotent per signer, stale PENDING (>5min) retryable",
+      "SignatureAuditEvent": "append-only per record: type String CREATED|OTP_VERIFIED|CONSENT|SIGNED|FAILED (+VIEWED reserved), details Json (no secrets), @@index([signatureRecordId])",
+      "_invariants": "Recipient never receives original or signed PDF bytes (owner-gated endpoints only); signing requires a verified link session (emailAuthenticated forced on when requireSignature is saved)"
+    }
+  },
+  "key_relation_chains": [
+    "Team 1-N Document 1-N DocumentVersion 1-N DocumentPage (page images per version; isPrimary picks active)",
+    "Document 1-N Link 1-N View N-1 Viewer (team-scoped recipient identity)",
+    "Dataroom N-N Document via DataroomDocument (+ DataroomFolder tree via materialized path)",
+    "Link N-1 Brand (per-link branding override); Dataroom 1-1 DataroomBrand + inherited team Brand",
+    "ViewerGroup/PermissionGroup -> AccessControls per item (folder/document) — effective permission = group controls override link defaults",
+    "VerificationToken doubles as OTP store and 23h verification tokens; Redis holds sessions (link_session:*, dataroom_session:*, preview_session:*)"
+  ],
+  "storage_key_conventions": {
+    "documents": "{teamId}/{docId}/{slugified-filename} — tus namingFunction (pages/api/file/tus) ; team prefix enables tenant-scoped access checks in presign proxy",
+    "page_images": "{teamId}/{docId}/page-N.{png|jpeg} (pages/api/mupdf/convert-page.ts)",
+    "regions": "EU default + US variant (team feature flag usStorage) — buckets via NEXT_PRIVATE_UPLOAD_*(_US)"
+  }
+}

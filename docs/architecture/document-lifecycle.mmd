@@ -1,0 +1,52 @@
+%% JANAVI document lifecycle (derived from Papermark analysis 2026-10-16)
+%% Maintain after changes to upload/conversion/viewing pipeline.
+
+flowchart TD
+    subgraph UPLOAD["Upload (authenticated team member)"]
+        A[Dropzone / new document page] -->|tus resumable, 4MiB chunks| B["POST /api/file/tus (2GiB cap)<br/>auth: session + UserTeam<br/>limits: per-MIME size, doc count"]
+        A -->|small files| C["presigned POST /api/file/s3/get-presigned-post-url<br/>>10MB → multipart"]
+        B --> D["S3 key: teamId/docId/filename<br/>MultiRegionS3Store (EU/US by flag)"]
+        C --> D
+        D --> E["POST /api/teams/:teamId/documents<br/>(or /:id/versions for new version)"]
+    end
+
+    E --> F["process-document (lib/api/documents)<br/>create Document + DocumentVersion v1<br/>file = originalFile = uploaded key"]
+    F -->|pdf| G["trigger: convert-pdf-to-image-route"]
+    F -->|docs/slides| H["trigger: convert-files-to-pdf<br/>ee/features/conversions — MISSING in checkout<br/>JANAVI: independent conversion worker (Sprint 2+)"]
+    F -->|video| I["trigger: optimize-video-files<br/>ffprobe/ffmpeg, sets length"]
+    F -->|sheet| J["no conversion; numPages=1<br/>(advanced excel: separate URL)"]
+
+    G --> K["mupdf worker routes (INTERNAL_API_KEY)<br/>get-pages → countPages<br/>convert-page per page:<br/>render pixmap PNG/JPEG q80, scale≤2.95<br/>extract pageLinks (GoTo/URI)<br/>upload teamId/docId/page-N"]
+    K --> L["DocumentPage rows (file, metadata, pageLinks)<br/>set numPages/hasPages, demote old versions"]
+
+    H --> M["version.file = converted PDF<br/>originalFile keeps source<br/>re-dispatch → G"]
+
+    subgraph SHARE["Sharing"]
+        N["Link created (POST /api/links)<br/>password AES-256-CTR encrypted<br/>preset defaults, allow/deny lists, watermark cfg"]
+    end
+
+    subgraph VIEW["Recipient viewing (public)"]
+        O["GET /view/:linkId (ISR getStaticProps)<br/>fetchLinkDataById — no secrets client-side<br/>password shown as 'protected'"] --> P{"Access gate<br/>POST /api/views"}
+        P -->|"expired/archived/deleted"| X404[404 screens]
+        P -->|emailProtected| Q[require valid email]
+        P -->|password| R["AES/bcrypt compare"]
+        P -->|emailAuthenticated| S["6-digit OTP (10min) →<br/>23h hashed verification token"]
+        P -->|allow/deny lists, groups| T[checkViewerEmailAccess]
+        Q & R & S & T --> U["create Viewer + View row<br/>sign ±10-page window URLs<br/>set link-session cookie (23h, fingerprint-bound)"]
+        U -->|hasPages| V["page-image viewer (flipbook/vertical)<br/>lazy pages via /api/views/pages (60/min)"]
+        U -->|no pages: pdf/image/video| W["signed file URL handed to browser<br/>NOTE: full PDF URL exposure — JANAVI protected viewer target"]
+        U -->|sheet/html/notion| Y["parsed data / sanitized html / recordMap"]
+    end
+
+    subgraph DOWNLOAD["Download (original bytes)"]
+        Z["POST /api/links/download"] --> ZA{"checks: view+session bound,<br/>verified?, allowDownload/downloadOnly,<br/>expiry, view age 30min/23h"}
+        ZA -->|watermark pdf/image| ZB["mupdf annotate-document<br/>flattened watermarked PDF streamed"]
+        ZA -->|else| ZC["presigned originalFile ?? file<br/>attachment disposition"]
+    end
+
+    subgraph TRACK["Analytics"]
+        V & W --> AA["client tracker: 10s interval, activity-aware<br/>sendBeacon → keepalive → retries"]
+        AA --> AB["POST /api/record_view → Tinybird page_views__v3<br/>(duration per page — approx, not guaranteed read time)"]
+        U --> AC["waitUntil: recordLinkView<br/>Tinybird click events + owner email + webhooks"]
+        Z --> AD["downloadedAt + DownloadType"]
+    end

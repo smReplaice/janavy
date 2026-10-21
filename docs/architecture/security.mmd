@@ -1,0 +1,53 @@
+%% JANAVI security architecture (Papermark fork analysis 2026-10-16)
+%% Trust zones, enforcement chain, and DRM gaps to close in Sprints 2-3.
+
+flowchart TB
+    subgraph Public["Public / untrusted"]
+        Recipient[Recipient browser]
+        Attacker[ probing / scraping ]
+    end
+
+    subgraph Perimeter
+        Gate["POST /api/views · /api/views-dataroom<br/>ORDERED CHECKS:<br/>1 link exists · !archived · !deleted · !expired<br/>2 version ∈ link.document<br/>3 emailProtected → valid email<br/>4 password → AES-256-CTR / bcrypt compare<br/>5 agreement → HMAC cookie/token<br/>6 allow/deny lists · visitor groups · team blocklist<br/>7 emailAuthenticated → OTP (10min) → 23h hashed token"]
+    end
+
+    subgraph Sessions["Redis-backed sessions (23h)"]
+        LS["link session pm_ls_<linkId><br/>fingerprint-bound · 100 req/min · maxAccesses 1000"]
+        DRS["dataroom session pm_drs_<linkId><br/>+ verified flag (OTP) · group permissions"]
+        REV["viewer_sessions:<viewerId><br/>revocation set"]
+    end
+
+    subgraph Protected["Protected resources"]
+        Pages["Page images (signed ±10-page window;<br/>lazy re-sign /api/views/pages ≤15/req, 60/min, age<23h)"]
+        Orig["Original bytes: /api/links/download/**<br/>view+session bound · verified? · allowDownload ·<br/>expiry · view age 30min/23h · watermark burn-in"]
+        S3[("Private S3 — never public;<br/>presigned ≤1h via INTERNAL presign route")]
+    end
+
+    subgraph Owner["Authenticated team zone"]
+        NextAuth[NextAuth JWT + UserTeam membership<br/>RBAC ADMIN/MANAGER/MEMBER/DATAROOM_MEMBER<br/>default-deny · room entitlements]
+    end
+
+    subgraph Internal["Service zone (INTERNAL_API_KEY)"]
+        Mupdf[mupdf convert/annotate]
+        Jobs[jobs/notifications]
+        Presign[presign get-url]
+    end
+
+    Recipient --> Gate --> LS & DRS --> Pages & Orig
+    LS & DRS -.revocation.-> REV
+    Orig --> S3
+    Pages --> S3
+    Mupdf & Presign --> S3
+    Jobs --> EmailN[Notification fan-out]
+    NextAuth --> OwnerAPIs[team APIs · uploads · dashboards]
+
+    classDef gap fill:#ffe9a8,stroke:#b45309
+    G1["GAP: no max-view-count"]:::gap
+    G2["GAP: viewing watermark = client SVG overlay only"]:::gap
+    G3["GAP: /api/views returns signed FULL pdf/image/video URL when hasPages=false (not viewer-bound)"]:::gap
+    G4["GAP: no print toggle · no clipboard interception · screenshot protection client-only"]:::gap
+    G5["GAP: no owner-configurable session duration"]:::gap
+    Gate -.-> G3
+    Pages -.-> G2
+    LS -.-> G5
+    Gate -.-> G1

@@ -1,0 +1,71 @@
+// Native electronic signature (single-signer MVP).
+//
+// The recipient signs through Janavy's protected page-image viewer; all PDF
+// modification happens server-side (lib/signing/native.ts). The recipient never
+// receives the original PDF bytes. SignatureRecord is the evidence trail for
+// one completed signing; SignatureAuditEvent is the append-only audit log.
+
+enum SignatureFieldType {
+  SIGNATURE
+  FULL_NAME
+  DATE
+  INITIALS
+  COMPANY
+}
+
+enum SignatureMethod {
+  DRAW
+  TYPE
+  UPLOAD
+}
+
+enum SignatureStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model SignatureRecord {
+  id                String           @id @default(cuid())
+  linkId            String
+  link              Link             @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  documentId        String
+  document          Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentVersionId String
+  documentVersion   DocumentVersion  @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+  viewId            String?
+  view              View?            @relation(fields: [viewId], references: [id], onDelete: SetNull)
+  viewerEmail       String // normalized (lowercase) signer email
+  viewerId          String? // Viewer id when known
+  method            SignatureMethod // DRAW | TYPE | UPLOAD
+  status            SignatureStatus  @default(PENDING)
+  consentAcceptedAt DateTime? // when the signer accepted the e-signature consent
+  signedAt          DateTime? // when the signed PDF was stored
+  signedFileKey     String? // S3 key of the signed PDF (private, owner-gated)
+  signedFileHash    String? // SHA-256 hex of the signed PDF bytes
+  originalFileHash  String? // SHA-256 hex of the original version PDF bytes
+  ipAddress         String?
+  userAgent         String?
+  fieldValues       Json? // submitted values per fieldId (text values only — signature images live only inside the signed PDF)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  auditEvents SignatureAuditEvent[]
+
+  @@index([linkId])
+  @@index([documentId])
+  @@index([linkId, viewerEmail, status])
+}
+
+// Append-only audit trail for a signature. `details` is JSON evidence, never
+// secrets (no OTP codes, no session tokens).
+model SignatureAuditEvent {
+  id                String          @id @default(cuid())
+  signatureRecordId String
+  signatureRecord   SignatureRecord @relation(fields: [signatureRecordId], references: [id], onDelete: Cascade)
+  type              String // CREATED | OTP_VERIFIED | CONSENT | SIGNED | FAILED
+  details           Json?
+  createdAt         DateTime        @default(now())
+
+  @@index([signatureRecordId])
+}

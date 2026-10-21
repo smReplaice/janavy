@@ -1,0 +1,23 @@
+import { chromium } from "@playwright/test";
+import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+const state = JSON.parse(readFileSync("tests/e2e/.auth/session.json", "utf8"));
+const email = state.primaryEmail;
+console.log("primary:", email);
+const browser = await chromium.launch();
+const ctx = await browser.newContext({ storageState: "tests/e2e/.auth/user.json" });
+const page = await ctx.newPage();
+await page.goto("/dashboard", { waitUntil: "domcontentloaded", timeout: 90000 });
+await page.waitForTimeout(5000);
+console.log("cookies before:", (await ctx.cookies()).map(c => `${c.name} (${c.path})`).join(", "));
+const s1 = await (await page.request.get("/api/auth/session")).json();
+console.log("session before:", s1?.user?.email);
+// sign out via API exactly as the client does
+const csrf = await (await page.request.get("/api/auth/csrf")).json();
+const out = await page.request.post("/api/auth/signout", { form: { csrfToken: csrf.csrfToken, callbackUrl: "http://localhost:3000/", json: "true" } });
+console.log("signout status:", out.status());
+console.log("set-cookie headers:", (out.headersArray().filter(h => h.name.toLowerCase() === "set-cookie").map(h => h.value.slice(0, 80))).join(" || "));
+console.log("cookies after:", (await ctx.cookies()).map(c => `${c.name} (${c.path})`).join(", "));
+const s2 = await (await page.request.get("/api/auth/session")).json();
+console.log("session after:", s2?.user?.email ?? "null");
+await browser.close();

@@ -1,0 +1,55 @@
+%% JANAVI system architecture (Papermark fork analysis 2026-10-16)
+%% Maintain after significant structural changes.
+
+flowchart LR
+    subgraph Client["Browser"]
+        UI[Dashboard React app<br/>pages router]
+        Viewer[Public viewer<br/>/view/:linkId]
+    end
+
+    subgraph Edge["Edge middleware"]
+        MW[middleware.ts<br/>auth gate · custom domains → /view/domains/*<br/>blocked pathnames]
+    end
+
+    subgraph Next["Next.js (Node runtime)"]
+        AuthAPI[auth: NextAuth + verify-code<br/>Google · LinkedIn · magic link/code · passkeys]
+        OwnerAPI[Owner APIs /api/teams/:teamId/**<br/>documents · links · datarooms · branding<br/>RBAC withTeam/withTeamApi]
+        PublicAPI[Public APIs<br/>/api/views · /api/views-dataroom<br/>/api/views/pages · /api/links/download/**]
+        Internal[Internal APIs (INTERNAL_API_KEY)<br/>/api/mupdf/* · /api/jobs/* · presign]
+        Cron[Cron (QStash-verified)<br/>domains · digests · welcome]
+    end
+
+    subgraph Data["Data layer"]
+        PG[(PostgreSQL — RDS janavi_dev<br/>Prisma · 15 schema files)]
+        Redis[(Redis Cloud<br/>prefix janavi:dev:<br/>sessions · locks · job stores · rate limits)]
+        S3[(Private S3 + CloudFront<br/>teamId/docId/* originals + page images)]
+        TB[(Tinybird<br/>page_views · click/video events)]
+    end
+
+    subgraph Workers["Background"]
+        Trigger[trigger.dev v4<br/>pdf→images · video · bulk zip<br/>exports · notifications]
+        Lambda[AWS Lambda<br/>bulk zip batching]
+    end
+
+    subgraph Ext["External"]
+        Beacon[Beacon email API<br/>beacon.replaice.co]
+        Resend[Resend (fallback/contacts)]
+        StripeMQ[Stripe · Documenso · Slack<br/>PostHog · Edge Config · Hanko]
+    end
+
+    Client --> MW --> Next
+    UI --> OwnerAPI
+    Viewer --> PublicAPI
+    Viewer -.trackers.-> TB
+    OwnerAPI --> PG & S3 & Redis
+    PublicAPI --> PG & Redis & S3
+    Internal --> S3
+    Trigger --> PG & S3 & Redis & Beacon
+    Cron --> PG & Redis & Beacon
+    Next -->|sendEmail dispatch| Beacon
+    Next -.fallback.-> Resend
+    Lambda --> S3
+    Next --- StripeMQ
+
+    classDef commercial fill:#fee,stroke:#c33
+    classDef janaviNew fill:#eef,stroke:#2563EB

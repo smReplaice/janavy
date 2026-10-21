@@ -1,0 +1,10 @@
+import { chromium } from "@playwright/test";
+const browser = await chromium.launch();
+const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+await page.goto("http://localhost:3000/login", { waitUntil: "networkidle", timeout: 60000 });
+const hasCarousel = await page.locator('[aria-roledescription="carousel"]').count();
+const text = await page.evaluate(() => document.body.innerText.slice(0, 400));
+console.log("carousel count:", hasCarousel);
+console.log("jv-symbol imgs:", await page.locator('img[src*="jv-symbol"]').count());
+console.log("title:", await page.title());
+await browser.close();

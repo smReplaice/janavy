@@ -1,0 +1,192 @@
+{
+  "$schema": "janavi-knowledge-graph/api-relationships/v1",
+  "description": "JANAVI (Papermark fork) API surface — route groups, auth model, licensing boundary. Maintained per sprint; update after modifying API routes.",
+  "generated": "2026-10-20 (agreements API wiring)",
+  "source_of_truth": "app/api/**, pages/api/**, app/(ee)/api/**, ee/features/**/api/**",
+  "auth_models": {
+    "session": "NextAuth getServerSession (JWT strategy) + UserTeam membership check; newer routes use withTeam/withTeamApi (lib/api/auth/with-session-team.ts) with RBAC (lib/api/rbac/permissions.ts: ADMIN/MANAGER/MEMBER/DATAROOM_MEMBER)",
+    "internal": "INTERNAL_API_KEY Bearer — mupdf workers, /api/jobs/*, S3 presign get-url",
+    "cron": "QStash signature verification (lib/cron/verify-qstash.ts)",
+    "public_viewer": "Link resolution via fetchLinkDataById (no secrets client-side; password sanitized to 'protected'); access gate POST /api/views | /api/views-dataroom; Redis-backed link/dataroom session cookies (pm_ls_<linkId>, pm_drs_<linkId>) with browser fingerprint + rate limits",
+    "token": "HMAC action tokens (agreements pm_sas_*, download pm_sds, unsubscribe), OTP VerificationToken rows, 23h hashed link-verification tokens",
+    "api_key": "Legacy deprecated public API: hashed RestrictedToken Bearer (pages/api/webhooks/services)"
+  },
+  "route_groups": [
+    {
+      "group": "documents",
+      "base": "/api/teams/:teamId/documents",
+      "auth": "session",
+      "routes": [
+        "GET/POST / (list/create)",
+        "GET/PUT/PATCH/DELETE /:id",
+        "POST /:id/{add-to-dataroom,versions,download,annotations}",
+        "GET /:id/{preview-data,preview-pages,overview,stats,views-count,export-visits}",
+        "POST /:id/{duplicate,move,update-link-url,toggle-download-only,...}",
+        "POST / accepts optional agreementType (NDA|MSA|SOW|SLA|PARTNERSHIP|VENDOR|EMPLOYMENT|OTHER → agreementStatus DRAFT); PATCH /:id accepts agreementType/agreementStatus/agreementMeta; GET / supports ?agreementType= filter and search matches name OR agreementType (2026-10-20)"
+      ]
+    },
+    {
+      "group": "links_owner",
+      "base": "/api/links",
+      "auth": "session",
+      "routes": [
+        "POST / (create; password AES-256-CTR encrypted at pages/api/links/index.ts:182)",
+        "PUT/DELETE /:id (PUT returns decrypted password to owners)",
+        "PUT /:id/{archive,duplicate,transfer}",
+        "POST /:id/preview (owner preview session in Redis, 20min)",
+        "POST / for agreement-categorized documents layers Confidential defaults onto the request body when toggles are omitted: emailProtected+emailAuthenticated, allowDownload=false, tiled '{{email}} · {{date}} · CONFIDENTIAL' watermark (2026-10-20)"
+      ]
+    },
+    {
+      "group": "viewer_access_gate",
+      "base": "/api/views (app router)",
+      "auth": "public — the DRM enforcement surface",
+      "enforcement_order": [
+        "link exists / not archived / not deleted / not expired",
+        "version belongs to link's document",
+        "emailProtected → require valid email",
+        "password → AES/bcrypt compare (lib/utils.ts:599-659, NEXT_PRIVATE_DOCUMENT_PASSWORD_KEY)",
+        "enableAgreement → HMAC cookie/token gate (lib/signing/access-token.ts)",
+        "allowList/denyList/visitorGroups/team.globalBlockList → checkViewerEmailAccess (lib/utils/global-block-list.ts)",
+        "emailAuthenticated → 6-digit OTP (10min) then 23h hashed verification token (lib/api/auth/token.ts)",
+        "on success: create Viewer+View, sign ±5-page window URLs, set link-session cookie (23h, fingerprint-bound, 100req/min)"
+      ]
+    },
+    {
+      "group": "viewer_dataroom_gate",
+      "base": "/api/views-dataroom",
+      "auth": "public + per-group access controls",
+      "notes": "same gates plus ViewerGroupAccessControls.canView/canDownload and PermissionGroupAccessControls; effective canDownload computed server-side; sets pm_drs_* cookies"
+    },
+    {
+      "group": "viewer_pages",
+      "base": "/api/views/pages",
+      "auth": "link/dataroom session or owner previewToken; view age <23h",
+      "notes": "lazy re-signing of page image URLs, 60/min rate limit"
+    },
+    {
+      "group": "downloads",
+      "base": "/api/links/download",
+      "auth": "public — CRITICAL: serves original file bytes",
+      "checks": [
+        "view exists for (viewId,linkId)",
+        "valid session bound to view",
+        "verified flag when emailAuthenticated",
+        "allowDownload (downloadOnly bypasses) + group canDownload",
+        "not archived/deleted/expired, not Notion",
+        "view age: 30min document links / 23h dataroom links"
+      ],
+      "watermark": "if enableWatermark + pdf/image → server-flattened watermarked PDF via /api/mupdf/annotate-document (INTERNAL_API_KEY)",
+      "routes": [
+        "/ (document)",
+        "/dataroom-document",
+        "/dataroom-folder",
+        "/bulk + /jobs/:jobId + /file/:jobId/:partIndex (zip parts)",
+        "/verify (download OTP)"
+      ]
+    },
+    {
+      "group": "datarooms",
+      "base": "/api/teams/:teamId/datarooms",
+      "auth": "session",
+      "ee_licensed_routes": [
+        "/generate",
+        "/trial",
+        "/folders/import-template",
+        "/apply-template",
+        "/groups/:groupId/invite",
+        "conversations (thin re-exports of ee/features/conversations)",
+        "freeze (app/(ee)/api/.../freeze/*)"
+      ]
+    },
+    {
+      "group": "teams",
+      "base": "/api/teams(/:teamId)",
+      "auth": "session",
+      "routes": [
+        "settings, members, invitations, domains, branding, brands(/default), tokens (API keys), webhooks, tags, presets, viewer-groups, export-jobs, notifications/preferences, limits, global-block-list"
+      ]
+    },
+    {
+      "group": "uploads",
+      "base": "/api/file",
+      "auth": "session (dashboard) / dataroom session (tus-viewer) / INTERNAL_API_KEY (get-presigned-get-url)",
+      "routes": [
+        "tus/[[...file]] (dashboard, Redis locker)",
+        "tus-viewer/[[...file]]",
+        "s3/get-presigned-post-url",
+        "s3/get-presigned-get-url (INTERNAL)",
+        "s3/get-presigned-get-url-proxy",
+        "s3/multipart",
+        "image-upload",
+        "notion"
+      ]
+    },
+    {
+      "group": "processing_workers",
+      "base": "/api/mupdf, /api/jobs",
+      "auth": "INTERNAL_API_KEY",
+      "routes": [
+        "mupdf/{convert-page,get-pages,annotate-document}",
+        "jobs/{get-thumbnail,process-download-batch,send-notification,...}"
+      ]
+    },
+    {
+      "group": "ingestion_public",
+      "base": "pages/api/record_*",
+      "auth": "public, zod-validated token-shaped payloads",
+      "routes": [
+        "record_view, record_click, record_video_view, record_reaction, report (abuse), feedback"
+      ]
+    },
+    {
+      "group": "cron",
+      "base": "/api/cron",
+      "auth": "QStash signature",
+      "routes": [
+        "domains, welcome-user, year-in-review, dataroom-digest/{daily,weekly}"
+      ]
+    },
+    {
+      "group": "auth",
+      "base": "/api/auth",
+      "auth": "NextAuth",
+      "providers": [
+        "Google",
+        "LinkedIn",
+        "Email magic-link (Resend/Unsend) + Redis 10-char login code → /api/auth/verify-code",
+        "Passkeys (Hanko)",
+        "SAML (BoxyHQ Jackson) [EE-LICENSED]"
+      ],
+      "session_strategy": "JWT (CustomUser embedded, refreshed on update trigger)",
+      "extras": [
+        "email blacklist (edge-config)",
+        "SSO enforcement per email domain",
+        "IP rate limit on signin [ee/features/security]"
+      ]
+    },
+    {
+      "group": "agreements_esign",
+      "base": "/api/agreements, /api/teams/:teamId/agreements",
+      "auth": "session + HMAC cookies (pm_sas_*, pm_sds)",
+      "provider": "Documenso"
+    }
+  ],
+  "ee_licensed_boundaries": {
+    "dirs": [
+      "ee/** (DELETED 2026-10-16)",
+      "app/(ee)/** (DELETED)"
+    ],
+    "rule": "Never re-import or recreate these trees; JANAVI equivalents live in lib/janavi, lib/branding, components/branding, lib/request-lists, components/conversations, components/view/confidential"
+  },
+  "gaps_vs_janavi_requirements": {
+    "max_view_count": "ABSENT — no Link field, no enforcement",
+    "watermark_viewing": "client-side SVG overlay only (components/view/watermark-svg.tsx); server-side flattening exists only for downloads",
+    "copy_restriction": "ABSENT",
+    "print_restriction": "ABSENT (lib/hooks/use-disable-print exists in DocumentView)",
+    "screenshot_protection": "Link.enableScreenshotProtection — client-side only CSS/JS",
+    "session_max_duration": "partial — fixed 23h sessions; no owner-configurable duration",
+    "session_revocation": "viewer_sessions:<viewerId> Redis set exists (immediate revocation possible); no UI/policy"
+  },
+  "removed_routes": "billing (stripe webhooks, settings/billing, internal/billing), workflows pages+api, conversations shims+faqs, dataroom trial, dataroom-invitations (invite modals), questions route reimplemented flag-gated, /api/jobs/send-conversation-* + send-pause-resume-notification"
+}
